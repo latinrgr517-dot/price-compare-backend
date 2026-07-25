@@ -59,8 +59,10 @@ async function fetchRealPrices(query) {
     if (!price) return;
 
     if (!grouped[name]) {
+      // Bug 16 fix: use stable hash of title instead of Math.random()
+      const stableId = item.product_id || Buffer.from(name).toString('base64').slice(0, 16);
       grouped[name] = {
-        id: item.product_id || String(Math.random()),
+        id: stableId,
         name,
         thumbnail,
         category: 'All',
@@ -131,17 +133,21 @@ function searchMockData(query, category, userLat, userLng) {
       .filter((p) => p.inStock)
       .map((pricing) => {
         const store = STORES[pricing.store];
+        // Bug 10 fix: guard unknown store keys
+        if (!store) return null;
         const distance = userLat && userLng ? distanceMiles(userLat, userLng, store.latitude, store.longitude) : 0;
         return {
           store: pricing.store,
           storeName: store.name,
           storeEmoji: store.emoji,
+          storeColor: store.color, // Bug 15 fix: include storeColor in mock path too
           price: pricing.price,
           distance,
           distanceMiles: distance.toFixed(1),
           inStock: true,
         };
       })
+      .filter(Boolean) // remove nulls from unknown stores
       .sort((a, b) => a.distance - b.distance || a.price - b.price);
 
     return {
@@ -211,19 +217,24 @@ router.get('/search/:productId', (req, res) => {
   const userLat = lat ? parseFloat(lat) : null;
   const userLng = lng ? parseFloat(lng) : null;
 
-  const storeResults = product.prices.map((pricing) => {
-    const store = STORES[pricing.store];
-    const distance = userLat && userLng ? distanceMiles(userLat, userLng, store.latitude, store.longitude) : 0;
-    return {
-      store: pricing.store,
-      storeName: store.name,
-      storeEmoji: store.emoji,
-      price: pricing.price,
-      inStock: pricing.inStock,
-      distance,
-      distanceMiles: distance.toFixed(1),
-    };
-  });
+  const storeResults = product.prices
+    .map((pricing) => {
+      const store = STORES[pricing.store];
+      // Bug 11 fix: guard unknown store keys
+      if (!store) return null;
+      const distance = userLat && userLng ? distanceMiles(userLat, userLng, store.latitude, store.longitude) : 0;
+      return {
+        store: pricing.store,
+        storeName: store.name,
+        storeEmoji: store.emoji,
+        storeColor: store.color,
+        price: pricing.price,
+        inStock: pricing.inStock,
+        distance,
+        distanceMiles: distance.toFixed(1),
+      };
+    })
+    .filter(Boolean);
 
   res.json({
     product: {
