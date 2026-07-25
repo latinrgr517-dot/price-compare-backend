@@ -34,14 +34,14 @@ function parsePrice(str) {
 }
 
 // Fetch real prices from Google Shopping via SerpAPI
-async function fetchRealPrices(query) {
+async function fetchRealPrices(query, limit) {
   const url = 'https://serpapi.com/search.json';
   const { data } = await axios.get(url, {
     params: {
       engine: 'google_shopping',
       q: query,
       api_key: SERPAPI_KEY,
-      num: 10,
+      num: limit,
     },
   });
 
@@ -168,17 +168,20 @@ function searchMockData(query, category, userLat, userLng) {
 }
 
 router.get('/search', async (req, res) => {
-  const { query, category = 'All', lat, lng } = req.query;
+  const { query, category = 'All', lat, lng, limit } = req.query;
 
   if (!query) return res.status(400).json({ error: 'Missing query parameter' });
 
   const userLat = lat ? parseFloat(lat) : null;
   const userLng = lng ? parseFloat(lng) : null;
 
+  const parsedLimit = Number.parseInt(limit, 10);
+  const resultLimit = Number.isNaN(parsedLimit) ? 30 : Math.max(1, Math.min(parsedLimit, 50));
+
   // Use real SerpAPI if key is set, otherwise fall back to mock data
   if (SERPAPI_KEY) {
     try {
-      let results = await fetchRealPrices(query);
+      let results = await fetchRealPrices(query, resultLimit);
       results = enrichWithDistance(results, userLat, userLng);
       results.sort((a, b) => (a.bestPrice || 999999) - (b.bestPrice || 999999));
 
